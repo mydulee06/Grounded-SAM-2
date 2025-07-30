@@ -4,6 +4,8 @@ import torch
 import numpy as np
 import supervision as sv
 from PIL import Image
+from supervision.draw.color import ColorPalette
+from utils.supervision_utils import CUSTOM_COLOR_MAP
 from sam2.build_sam import build_sam2_video_predictor, build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
 from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection 
@@ -32,7 +34,7 @@ image_predictor = SAM2ImagePredictor(sam2_image_model)
 
 
 # init grounding dino model from huggingface
-model_id = "IDEA-Research/grounding-dino-tiny"
+model_id = "IDEA-Research/grounding-dino-base"
 device = "cuda" if torch.cuda.is_available() else "cpu"
 processor = AutoProcessor.from_pretrained(model_id)
 grounding_model = AutoModelForZeroShotObjectDetection.from_pretrained(model_id).to(device)
@@ -40,11 +42,11 @@ grounding_model = AutoModelForZeroShotObjectDetection.from_pretrained(model_id).
 
 # setup the input image and text prompt for SAM 2 and Grounding DINO
 # VERY important: text queries need to be lowercased + end with a dot
-text = "car."
+text = "pillar. bottom plate."
 
 # `video_dir` a directory of JPEG frames with filenames like `<frame_index>.jpg`  
 
-video_dir = "notebooks/videos/car"
+video_dir = "../data_gen/output/ABP_1/0/color"
 
 # scan all the JPEG frame names in this directory
 frame_names = [
@@ -181,11 +183,11 @@ for frame_idx, segments in video_segments.items():
         mask=masks, # (n, h, w)
         class_id=np.array(object_ids, dtype=np.int32),
     )
-    box_annotator = sv.BoxAnnotator()
+    box_annotator = sv.BoxAnnotator(color=ColorPalette.from_hex(CUSTOM_COLOR_MAP))
     annotated_frame = box_annotator.annotate(scene=img.copy(), detections=detections)
-    label_annotator = sv.LabelAnnotator()
+    label_annotator = sv.LabelAnnotator(color=ColorPalette.from_hex(CUSTOM_COLOR_MAP), smart_position=True)
     annotated_frame = label_annotator.annotate(annotated_frame, detections=detections, labels=[ID_TO_OBJECTS[i] for i in object_ids])
-    mask_annotator = sv.MaskAnnotator()
+    mask_annotator = sv.MaskAnnotator(color=ColorPalette.from_hex(CUSTOM_COLOR_MAP))
     annotated_frame = mask_annotator.annotate(scene=annotated_frame, detections=detections)
     cv2.imwrite(os.path.join(save_dir, f"annotated_frame_{frame_idx:05d}.jpg"), annotated_frame)
 
