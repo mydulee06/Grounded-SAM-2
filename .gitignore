@@ -9,6 +9,7 @@ build/*
 _C.*
 outputs/*
 checkpoints/*.pt
+checkpoints/*.pt.1
 *test*
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -143,5 +144,6 @@ dmypy.json
 # checkpoint
 *.pth
 outputs/
+tracking_results/
 
 .idea/

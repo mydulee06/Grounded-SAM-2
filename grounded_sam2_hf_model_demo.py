@@ -15,10 +15,14 @@ from sam2.sam2_image_predictor import SAM2ImagePredictor
 from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection 
 
 """
+python grounded_sam2_hf_model_demo.py --text-prompt "pillar. bottom plate." --img-path test/000000.jpg --output-dir test/test8
+"""
+
+"""
 Hyper parameters
 """
 parser = argparse.ArgumentParser()
-parser.add_argument('--grounding-model', default="IDEA-Research/grounding-dino-tiny")
+parser.add_argument('--grounding-model', default="IDEA-Research/grounding-dino-base")
 parser.add_argument("--text-prompt", default="car. tire.")
 parser.add_argument("--img-path", default="notebooks/images/truck.jpg")
 parser.add_argument("--sam2-checkpoint", default="./checkpoints/sam2.1_hiera_large.pt")
@@ -77,8 +81,8 @@ with torch.no_grad():
 results = processor.post_process_grounded_object_detection(
     outputs,
     inputs.input_ids,
-    box_threshold=0.4,
-    text_threshold=0.3,
+    box_threshold=0.3,
+    text_threshold=0.2,
     target_sizes=[image.size[::-1]]
 )
 
@@ -142,7 +146,7 @@ you can set color=ColorPalette.DEFAULT
 box_annotator = sv.BoxAnnotator(color=ColorPalette.from_hex(CUSTOM_COLOR_MAP))
 annotated_frame = box_annotator.annotate(scene=img.copy(), detections=detections)
 
-label_annotator = sv.LabelAnnotator(color=ColorPalette.from_hex(CUSTOM_COLOR_MAP))
+label_annotator = sv.LabelAnnotator(color=ColorPalette.from_hex(CUSTOM_COLOR_MAP), smart_position=True)
 annotated_frame = label_annotator.annotate(scene=annotated_frame, detections=detections, labels=labels)
 cv2.imwrite(os.path.join(OUTPUT_DIR, "groundingdino_annotated_image.jpg"), annotated_frame)
 
@@ -175,8 +179,9 @@ if DUMP_JSON_RESULTS:
                 "bbox": box,
                 "segmentation": mask_rle,
                 "score": score,
+                "confidence": confidence,
             }
-            for class_name, box, mask_rle, score in zip(class_names, input_boxes, mask_rles, scores)
+            for class_name, box, mask_rle, score, confidence in zip(class_names, input_boxes, mask_rles, scores, confidences)
         ],
         "box_format": "xyxy",
         "img_width": image.width,
