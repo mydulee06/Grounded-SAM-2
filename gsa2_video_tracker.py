@@ -11,6 +11,7 @@ from sam2.sam2_image_predictor import SAM2ImagePredictor
 from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection 
 from utils.track_utils import sample_points_from_masks
 from utils.video_utils import create_video_from_images
+from collections import defaultdict
 
 
 GSA2_PATH = os.path.dirname(__file__)
@@ -61,14 +62,14 @@ class GSA2VideoTracker:
 
 
     def process_prompt(
-            self,
-            prompt_type,
-            objects,
-            inference_state,
-            ann_frame_idx,
-            masks,
-            input_boxes,
-        ):
+        self,
+        prompt_type,
+        objects,
+        inference_state,
+        ann_frame_idx,
+        masks,
+        input_boxes,
+    ):
         assert prompt_type in ["point", "box", "mask"], "SAM 2 video predictor only support point/box/mask prompt"
 
         # If you are using point prompts, we uniformly sample positive points based on the mask
@@ -109,15 +110,16 @@ class GSA2VideoTracker:
 
 
     def predict(
-            self,
-            video_dir,
-            text,
-            ann_frame_idx=0,
-            box_threshold=0.25,
-            text_threshold=0.3,
-            prompt_type="box",
-            save_dir = None,
-        ):
+        self,
+        video_dir,
+        text,
+        ann_frame_idx=0,
+        box_threshold=0.25,
+        text_threshold=0.3,
+        prompt_type="box",
+        mask_dir = None,
+        result_dir = None,
+    ):
         # init video predictor state
         inference_state = self.video_predictor.init_state(video_path=video_dir)
 
@@ -183,27 +185,60 @@ class GSA2VideoTracker:
                 for i, out_obj_id in enumerate(out_obj_ids)
             }
 
+        if mask_dir is not None:
+            self.save_mask(
+                mask_dir,
+                objects,
+                video_segments,
+            )
+
         # Step 5: Visualize the segment results across the video and save them
-        if save_dir is not None:
+        if result_dir is not None:
             self.save_result(
-                save_dir,
+                result_dir,
                 video_dir,
                 frame_names,
                 objects,
                 video_segments,
             )
 
-        return video_segments
+        id_to_objects = {i: obj for i, obj in enumerate(objects, start=1)}
+
+        return video_segments, id_to_objects
+    
+
+    def save_mask(
+        self,
+        save_dir,
+        objects,
+        video_segments,
+    ):
+        os.makedirs(save_dir, exist_ok=True)
+
+        # Replace space with underbar
+        objects = [o.replace(' ', '_') for o in objects]
+
+        # Count per object
+        counter = defaultdict(int)
+        objects_uids = [f"{name}_{counter[name]}" or counter.__setitem__(name, counter[name] + 1) for name in objects]
+        for objects_uid in objects_uids:
+            objects_uid_save_dir = os.path.join(save_dir, objects_uid)
+            os.makedirs(objects_uid_save_dir, exist_ok=True)
+
+        for frame_idx, segments in video_segments.items():
+            for i, (object_id, mask) in enumerate(segments.items()):
+                objects_uid_save_path = os.path.join(save_dir, objects_uids[i], f"{frame_idx:06d}.jpg")
+                cv2.imwrite(objects_uid_save_path, mask[0]*255)
 
 
     def save_result(
-            self,
-            save_dir,
-            video_dir,
-            frame_names,
-            objects,
-            video_segments,
-        ):
+        self,
+        save_dir,
+        video_dir,
+        frame_names,
+        objects,
+        video_segments,
+    ):
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
         
