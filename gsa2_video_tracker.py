@@ -12,6 +12,7 @@ from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
 from utils.track_utils import sample_points_from_masks
 from utils.video_utils import create_video_from_images
 from collections import defaultdict
+import imageio.v2 as imageio
 
 
 GSA2_PATH = os.path.dirname(__file__)
@@ -227,8 +228,8 @@ class GSA2VideoTracker:
 
         for frame_idx, segments in video_segments.items():
             for i, (object_id, mask) in enumerate(segments.items()):
-                objects_uid_save_path = os.path.join(save_dir, objects_uids[i], f"{frame_idx:06d}.jpg")
-                cv2.imwrite(objects_uid_save_path, mask[0]*255)
+                objects_uid_save_path = os.path.join(save_dir, objects_uids[i], f"{frame_idx:06d}.png")
+                imageio.imwrite(objects_uid_save_path, mask[0].astype(np.uint8)*255)
 
 
     def save_result(
