@@ -110,7 +110,86 @@ class GSA2VideoTracker:
         return out_obj_ids, out_mask_logits
 
 
-    def predict(
+    def predict_image(
+        self,
+        img_path,
+        text,
+        box_threshold=0.25,
+        text_threshold=0.2,
+        mask_dir = None,
+        result_dir = None,
+    ):
+        image = Image.open(img_path)
+
+        self.image_predictor.set_image(np.array(image.convert("RGB")))
+
+        inputs = self.processor(images=image, text=text, return_tensors="pt").to(self.device)
+        with torch.no_grad():
+            outputs = self.grounding_model(**inputs)
+
+        results = self.processor.post_process_grounded_object_detection(
+            outputs,
+            inputs.input_ids,
+            box_threshold=box_threshold,
+            text_threshold=text_threshold,
+            target_sizes=[image.size[::-1]]
+        )
+
+        input_boxes = results[0]["boxes"].cpu().numpy()
+        class_names = results[0]["labels"]
+        confidences = results[0]["scores"].cpu().numpy()
+
+        valid_classes = text.replace('. ', '.').split('.')[:-1]
+        valid_ids = [i for i, class_name in enumerate(class_names) if class_name in valid_classes]
+        input_boxes = input_boxes[valid_ids]
+        class_names = [class_name for class_name in class_names if class_name in valid_classes]
+        class_ids = np.array(list(range(len(class_names))))
+        confidences = confidences[valid_ids]
+
+        masks, scores, logits = self.image_predictor.predict(
+            point_coords=None,
+            point_labels=None,
+            box=input_boxes,
+            multimask_output=False,
+        )
+
+        if masks.ndim == 4:
+            masks = masks.squeeze(1)
+
+        if mask_dir is not None:
+            os.makedirs(mask_dir, exist_ok=True)
+            for mask, class_name, confidence in zip(masks, class_names, confidences):
+                confidence_str = f'{confidence:.4f}'.replace('.', '_')
+                mask_save_path = os.path.join(mask_dir, f"{class_name.replace(' ', '_')}_{confidence_str}.png")
+                imageio.imwrite(mask_save_path, mask.astype(np.uint8)*255)
+
+        if result_dir is not None:
+            labels = [
+                f"{class_name} {confidence:.2f}"
+                for class_name, confidence
+                in zip(class_names, confidences)
+            ]
+            img = cv2.imread(img_path)
+            detections = sv.Detections(
+                xyxy=input_boxes,  # (n, 4)
+                mask=masks.astype(bool),  # (n, h, w)
+                class_id=class_ids
+            )
+            box_annotator = sv.BoxAnnotator(color=ColorPalette.from_hex(CUSTOM_COLOR_MAP))
+            annotated_frame = box_annotator.annotate(scene=img.copy(), detections=detections)
+
+            label_annotator = sv.LabelAnnotator(color=ColorPalette.from_hex(CUSTOM_COLOR_MAP), smart_position=True)
+            annotated_frame = label_annotator.annotate(scene=annotated_frame, detections=detections, labels=labels)
+            cv2.imwrite(os.path.join(result_dir, "groundingdino_annotated_image.jpg"), annotated_frame)
+
+            mask_annotator = sv.MaskAnnotator(color=ColorPalette.from_hex(CUSTOM_COLOR_MAP))
+            annotated_frame = mask_annotator.annotate(scene=annotated_frame, detections=detections)
+            cv2.imwrite(os.path.join(result_dir, "grounded_sam2_annotated_image_with_mask.jpg"), annotated_frame)
+
+        return masks, class_names, confidences
+
+
+    def predict_video(
         self,
         video_dir,
         text,
@@ -187,7 +266,7 @@ class GSA2VideoTracker:
             }
 
         if mask_dir is not None:
-            self.save_mask(
+            self.save_video_mask(
                 mask_dir,
                 objects,
                 video_segments,
@@ -195,7 +274,7 @@ class GSA2VideoTracker:
 
         # Step 5: Visualize the segment results across the video and save them
         if result_dir is not None:
-            self.save_result(
+            self.save_video_result(
                 result_dir,
                 video_dir,
                 frame_names,
@@ -208,7 +287,7 @@ class GSA2VideoTracker:
         return video_segments, id_to_objects
     
 
-    def save_mask(
+    def save_video_mask(
         self,
         save_dir,
         objects,
@@ -232,7 +311,7 @@ class GSA2VideoTracker:
                 imageio.imwrite(objects_uid_save_path, mask[0].astype(np.uint8)*255)
 
 
-    def save_result(
+    def save_video_result(
         self,
         save_dir,
         video_dir,
